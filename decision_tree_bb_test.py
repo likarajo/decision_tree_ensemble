@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.utils.multiclass import unique_labels
 from sklearn.metrics import confusion_matrix
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.tree import export_graphviz
 from sklearn.model_selection import train_test_split
 
@@ -52,7 +53,6 @@ def partition(x):
     # INSERT YOUR CODE HERE
     
     x_dict = {}
-    
     j = 0
     for i in x:
         if i not in x_dict:
@@ -61,15 +61,8 @@ def partition(x):
         else:
             x_dict[i].append(j)
         j = j + 1
-        
-#    unique_x = np.unique(x)
-#
-#    for x_attr in unique_x:
-#        x_dict[x_attr] = np.where(x == x_attr)[0]
 
     return x_dict
-
-'''
 
     #return {c: (x==c).nonzero()[0] for c in np.unique(x)}
     
@@ -78,7 +71,7 @@ def partition(x):
 #x1 = [1,2,3,2]
 #print(partition(x1))
 
-def entropy(y):
+def entropy(y, w=None):
     """
     Compute the entropy of a vector y by considering the counts of the unique values (v1, ... vk), in z
 
@@ -86,22 +79,35 @@ def entropy(y):
     """
 
     # INSERT YOUR CODE HERE
-             
+    
     z = partition(y)
     h = 0.0
 
     for k, v in z.items():
         # p = length of the list of indices for each item in z divided by the total length of vector y
-        p = len(v) / len(y)
-        # update the entropy with plog(p).
-        h = h - ( p * np.log2(p))
+        if w is not None:
+            sum = 0
+            for i in v:
+               sum = sum + w[i] 
+               
+            p = sum / len(y)
+            # update the entropy with plog(p).
+            h = h - ( p * np.log2(p))
+        else:
+            p = len(v) / len(y)
+            # update the entropy with plog(p).
+            h = h - ( p * np.log2(p))
 
     return h
 
     raise Exception('Function not yet implemented!')
     
+#x1 = [1,0,1]
+#w1 = [0.5,0.8,0.2]
+#print(entropy(x1, w1))
 
-def mutual_information(x, y):
+
+def mutual_information(x, y, w=None):
     """
     Compute the mutual information between a data column (x) and the labels (y). The data column is a single attribute
     over all the examples (n x 1). Mutual information is the difference between the entropy BEFORE the split set, and
@@ -116,17 +122,23 @@ def mutual_information(x, y):
     x_unique = partition(x)
 
     # counts of the unique values in x
-    x_counts = []
+    x_weights = []
     for k in x_unique.keys():
-        x_counts.append(len(x_unique[k]))
-
+        if w is not None:
+            sum = 0
+            for i in x_unique[k]:
+                sum = sum + w[i]
+            x_weights.append(sum)
+        else:
+            x_weights.append(len(x_unique[k]))
+            
     # probabilty of the unique values in x
     probs_x = []
-    for i in x_counts:
+    for i in x_weights:
         probs_x.append(i / len(x))
         
     # Entropy
-    hy = entropy(y)
+    hy = entropy(y, w)
 
     # Conditional entropy H(y | x)
     hyx = 0.0
@@ -134,7 +146,10 @@ def mutual_information(x, y):
     # Weighted average entropy over all possible splits
     j = 0
     for i, v in x_unique.items():
-        hyx = hyx + probs_x[j] * entropy(y[v])
+        if w is not None:
+            hyx = hyx + probs_x[j] * entropy(y[v], w[v])
+        else:
+            hyx = hyx + probs_x[j] * entropy(y[v])
         j += 1
 
     # Mutual Information or Information Gain, MI = H(y) - H( y | x)
@@ -143,9 +158,13 @@ def mutual_information(x, y):
     return mi
 
     raise Exception('Function not yet implemented!')
+    
+#x1 = np.array([1,0,1])
+#y1 = np.array([1,0,1])
+#w1 = np.array([0.5,0.8,0.2])
+#print(mutual_information(x1, y1, w1))
 
-
-def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
+def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5, w=None):
     """
     Implements the classical ID3 algorithm given training data (x), training labels (y) and an array of
     attribute-value pairs to consider. This is a recursive algorithm that depends on three termination conditions
@@ -195,10 +214,16 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
     # list of unique values in y
     y_unique = partition(y)
 
-    # counts of unique values in y
-    y_counts = []
+    # weights of unique values in y
+    y_weights = []
     for k in y_unique.keys():
-        y_counts.append(len(y_unique[k]))
+        if w is not None:
+            sum = 0
+            for i in y_unique[k]:
+                sum = sum + w[i]
+            y_weights.append(sum)
+        else:
+            y_weights.append(len(y_unique[k]))
 
     # When y is Pure, i.e. only one unique value in the set, return the label
     if len(list(y_unique.keys())) == 1:
@@ -218,22 +243,40 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
 
     # When no attribute-value pairs left to split on, return the majority label
     if len(attribute_value_pairs) == 0:
-        max_count = 0
+        max_weight = 0
         majority_label = 0
         for l, c in y_unique.items():
-            if len(c) >= max_count:
-                max_count = len(c)
-                majority_label = l
+            if w is not None:
+                sum = 0
+                for i in c:
+                    sum = sum + w[i]
+                if sum >= max_weight:
+                    max_weight = sum
+                    majority_label = l
+            else:
+                if len(c) >= max_weight:
+                    max_weight = len(c)
+                    majority_label = l
+                
         return majority_label
 
     # When the Tree has grown to maximum depth, return the majority label
     if md==0:
-        max_count = 0
+        max_weight = 0
         majority_label = 0
         for l, c in y_unique.items():
-            if len(c) >= max_count:
-                max_count = len(c)
-                majority_label = l
+            if w is not None:
+                sum = 0
+                for i in c:
+                    sum = sum + w[i]
+                if sum >= max_weight:
+                    max_weight = sum
+                    majority_label = l
+            else:
+                if len(c) >= max_weight:
+                    max_weight = len(c)
+                    majority_label = l
+                
         return majority_label
 
     # Find the best attribute that has maximum Mutual Information
@@ -241,7 +284,7 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
     attr = 0
     value = 0
     for (a, v) in attribute_value_pairs:
-        mi = mutual_information(np.array(x[:, a] == v), y)
+        mi = mutual_information(np.array(x[:, a] == v), y, w)
         if mi >= mi_max:
             mi_max = mi
             attr = a
@@ -262,8 +305,13 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
     return tree
 
     raise Exception('Function not yet implemented!')
+    
+#x1 = np.array([[1,0,1]])
+#y1 = np.array([1,0,1])
+#w1 = np.array([0.5,0.8,0.2])
+#print(id3(x1, y1, depth=0, max_depth=5, w=w1))
 
-
+'''
 def predict_example(x, tree):
     """
     Predicts the classification label for a single example x using tree by recursively descending the tree until
@@ -445,45 +493,6 @@ def plot_confusion_matrix(y_true, y_pred,
     fig.savefig('./'+title+'.jpg')
     return ax
 '''
-def boosting(x, y, maxdepth=2, num_stumps):
-    
-    n,d = x.shape
-    
-    weights = np.ones(n) / n
-    
-    alphas = list()
-    forest = list()
-    
-    for t in range(num_stumps):
-        tree = cart(x,y,maxdepth,weights)
-        pr = np.sign(predicttree(tree,x))
-        eps = np.sum(weights[pr!=y])
-        print("eps%s:"%eps)
-        if eps < 0.5:       
-            thing = (1-eps)/eps
-            thing2 = (1-eps)*eps
-            alpha = 0.5*np.log(thing)
-            alphas.append(alpha)
-            forest.append(tree)
-            weights = weights*np.exp(-alpha*y*pr)/(2*np.sqrt(thing2))
-        else:
-            break
-                          
-    return forest, np.array(alphas)
-'''
-
-def bagging(x, y, max_depth, num_trees):
-    size = len(x)
-    for i in range(num_trees):
-        sample_indices = np.random.choice(size, size, replace=True)
-        sample_x, sample_y = x[sample_indices], y[sample_indices]
-        print(sample_x)
-        print(sample_y)
-        dtree = id3(x=sample_x, y=sample_y, max_depth=max_depth)
-        pprint(dtree)
-        print("================")
-
-
 if __name__ == '__main__':
     # Load the training and testing data
     Mtrn = np.genfromtxt('./data/mushroom.train', missing_values=0, skip_header=0, delimiter=',', dtype=int)
@@ -493,22 +502,19 @@ if __name__ == '__main__':
     Mtst = np.genfromtxt('./data/mushroom.test', missing_values=0, skip_header=0, delimiter=',', dtype=int)
     ytst = Mtst[:, 0]
     Xtst = Mtst[:, 1:]
-    
-    #weights = np.transpose(np.array(np.linspace(1,50,len(ytrn))))
-    #print(weights.shape)
-    
-    #print(entropy(Xtrn[:,0], weights))
-    bagging(Xtrn, ytrn, 5, 2)
-    
 
-#=========Test in mushroom dataset=================================
+#=========Test in monks-1=================================
     # Learn a decision tree of depth 3
+    
+    weights = np.array(np.linspace(1, 10, 21))
+    #print(weights)
+    
     decision_tree = id3(Xtrn, ytrn, max_depth=3, w=weights)
 
     # Pretty print it to console
     pprint(decision_tree)
     #pretty_print(decision_tree)
-    
+
     # Visualize the tree and save it as a PNG image
     dot_str = to_graphviz(decision_tree)
     render_dot_file(dot_str, './my_learned_tree')
@@ -521,7 +527,8 @@ if __name__ == '__main__':
 
     print('Train Error = {0:4.2f}%.'.format(trn_err * 100))
     print('Test Error = {0:4.2f}%.'.format(tst_err * 100))
-        
+
+       
 #===========For mushrooms, learned decision tree using self implemented classifier and scikit's version
 #           and found the confusion matrix on the test set for depth = 1, 3, 5========================
     
