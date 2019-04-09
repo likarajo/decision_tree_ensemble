@@ -51,8 +51,9 @@ def partition(x):
     
     # INSERT YOUR CODE HERE
     
+    '''option 1
     x_dict = {}
-    
+    code changed
     j = 0
     for i in x:
         if i not in x_dict:
@@ -61,24 +62,24 @@ def partition(x):
         else:
             x_dict[i].append(j)
         j = j + 1
-        
-#    unique_x = np.unique(x)
-#
-#    for x_attr in unique_x:
-#        x_dict[x_attr] = np.where(x == x_attr)[0]
-
     return x_dict
+    '''
+    
+    '''option 2
+    x_dict = {}
+    unique_x = np.unique(x)
+    for x_attr in unique_x:
+        x_dict[x_attr] = np.where(x == x_attr)[0]
+    return x_dict
+    '''
 
-'''
-
-    #return {c: (x==c).nonzero()[0] for c in np.unique(x)}
+    '''option 3'''
+    return {c: (x==c).nonzero()[0] for c in np.unique(x)}
     
     raise Exception('Function not yet implemented!')
 
-#x1 = [1,2,3,2]
-#print(partition(x1))
 
-def entropy(y):
+def entropy(y, w=None):
     """
     Compute the entropy of a vector y by considering the counts of the unique values (v1, ... vk), in z
 
@@ -86,22 +87,36 @@ def entropy(y):
     """
 
     # INSERT YOUR CODE HERE
-             
-    z = partition(y)
+    
+    # not using partition function in order to take weights into account
+    
     h = 0.0
-
-    for k, v in z.items():
-        # p = length of the list of indices for each item in z divided by the total length of vector y
-        p = len(v) / len(y)
-        # update the entropy with plog(p).
-        h = h - ( p * np.log2(p))
-
+    
+    if w is None:
+        w = np.ones((len(y), 1), dtype=int) #numpy.ones(shape, dtype=None)
+    
+    # initialize probability of the classes (binary 0,1) as 0
+    p = {0: 0, 1: 0} 
+    
+    # for all elements of the vector
+    for i in range(len(y)): 
+        # add weight to each probability
+        if y[i] == 0:
+            p[0] = p[0] + w[i]
+        elif y[i] == 1:
+            p[1] = p[1] + w[i]
+    
+    # for each classification (0 and 1)
+    for j in range(len(p)):
+        p[j] = p[j]/(p[0] + p[1])
+        h = h - (p[j] * np.log2(p[j]))
+    
     return h
 
     raise Exception('Function not yet implemented!')
     
 
-def mutual_information(x, y):
+def mutual_information(x, y, w=None):
     """
     Compute the mutual information between a data column (x) and the labels (y). The data column is a single attribute
     over all the examples (n x 1). Mutual information is the difference between the entropy BEFORE the split set, and
@@ -111,31 +126,28 @@ def mutual_information(x, y):
     """
 
     # INSERT YOUR CODE HERE
+    
+    if w is None:
+        w = np.ones((len(y), 1), dtype=int) 
 
     # list of unique values in x
     x_unique = partition(x)
-
-    # counts of the unique values in x
-    x_counts = []
-    for k in x_unique.keys():
-        x_counts.append(len(x_unique[k]))
-
-    # probabilty of the unique values in x
-    probs_x = []
-    for i in x_counts:
-        probs_x.append(i / len(x))
         
     # Entropy
-    hy = entropy(y)
-
+    hy = entropy(y, w)
+    
     # Conditional entropy H(y | x)
     hyx = 0.0
-
-    # Weighted average entropy over all possible splits
-    j = 0
-    for i, v in x_unique.items():
-        hyx = hyx + probs_x[j] * entropy(y[v])
-        j += 1
+    
+    # Weighted average
+    temp = 0.0
+    total_weight = 0
+    for j in x_partition:
+        w_i = np.sum(w[x_unique[j]])
+        temp = temp + (w_i * entropy(y[x_unique[j]], w[x_unique[j]]))
+        total_weight = w_i + total_weight
+        
+    hyx = temp / total_weight
 
     # Mutual Information or Information Gain, MI = H(y) - H( y | x)
     mi = hy - hyx
@@ -145,7 +157,7 @@ def mutual_information(x, y):
     raise Exception('Function not yet implemented!')
 
 
-def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
+def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5, w=None):
     """
     Implements the classical ID3 algorithm given training data (x), training labels (y) and an array of
     attribute-value pairs to consider. This is a recursive algorithm that depends on three termination conditions
@@ -189,6 +201,9 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
     # INSERT YOUR CODE HERE. NOTE: THIS IS A RECURSIVE FUNCTION.
     
     md = max_depth
+    
+    if w is None:
+        w = [1.] * len(x)
 
     tree = {}
 
@@ -241,7 +256,7 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
     attr = 0
     value = 0
     for (a, v) in attribute_value_pairs:
-        mi = mutual_information(np.array(x[:, a] == v), y)
+        mi = mutual_information(np.array(x[:, a] == v), y, w)
         if mi >= mi_max:
             mi_max = mi
             attr = a
@@ -257,7 +272,7 @@ def id3(x, y, attribute_value_pairs=None, depth=0, max_depth=5):
         x_subset = x.take(indices, axis=0)
         y_subset = y.take(indices, axis=0)
         decision = bool(split_value)
-        tree[(attr, value, decision)] = id3(x_subset, y_subset, attribute_value_pairs=attribute_value_pairs, max_depth = md - 1)
+        tree[(attr, value, decision)] = id3(x_subset, y_subset, attribute_value_pairs=attribute_value_pairs, max_depth = md - 1, w)
 
     return tree
 
@@ -444,7 +459,7 @@ def plot_confusion_matrix(y_true, y_pred,
     #fig.tight_layout()
     fig.savefig('./'+title+'.jpg')
     return ax
-'''
+
 def boosting(x, y, maxdepth=2, num_stumps):
     
     n,d = x.shape
@@ -470,7 +485,7 @@ def boosting(x, y, maxdepth=2, num_stumps):
             break
                           
     return forest, np.array(alphas)
-'''
+
 
 def bagging(x, y, max_depth, num_trees):
     size = len(x)
