@@ -1,8 +1,5 @@
 import numpy as np
-import os
-import graphviz
 
-import math
 import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix
@@ -241,6 +238,18 @@ def predict_example_boosting(x, h_ens):
         return 1
     else:
         return 0
+    
+def majority_label(_map):
+    
+    max_count = -1
+    major_label = None
+    for label in _map:
+        e = sum(_map[label])
+        if e > max_count:
+            max_count = e
+            major_label = label
+            
+    return major_label
         
 def predict_example_utility(x, tree):
 
@@ -261,15 +270,16 @@ def predict_example_utility(x, tree):
 
     return default_output
 
-# Function to print and plot the confusion matrix (customized and edited the sklearn's plot_confusion_matrix function)
+
 def plot_confusion_matrix(y_true, y_pred,
                           normalize=False,
                           title=None,
                           cmap=plt.cm.Blues):
     """
-    This function prints and plots the confusion matrix.
-    Normalization can be applied by setting `normalize=True`.
+    Function to print and plot the confusion matrix 
+    Customized and edited the sklearn's plot_confusion_matrix function
     """
+    
     if not title:
         if normalize:
             title = 'Normalized confusion matrix'
@@ -327,11 +337,11 @@ if __name__ == '__main__':
     _boosting = True
     
     _self = True
-    _scikit = False
+    _scikit = True
     
-    tree_depth = np.array([3, 5])
-    stump_depth = np.array([1, 2])
-    ens_size = np.array([5, 10])
+    tree_depth = np.array([3,5])
+    stump_depth = np.array([1,2])
+    ens_size = np.array([5,10])
 
     if (_self):
         print('Self-implementation')
@@ -342,8 +352,7 @@ if __name__ == '__main__':
                     print('Size {1} Depth {0}'.format(d,n))
                     modelList = bagging(Xtrn, ytrn, d, n)
                     self_y_pred = [predict_example_bagging(Xtst[i, :], modelList) for i in range(Xtst.shape[0])]
-                    plot_confusion_matrix(ytst, self_y_pred, normalize=False,
-                                  title='self_bagging_depth{0}_size{1}_cm'.format(d,n))
+                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='self_bagging_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
                     print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
                     
@@ -354,8 +363,7 @@ if __name__ == '__main__':
                     print('Size {1} Depth {0}'.format(d,n)) 
                     model = boosting(Xtrn, ytrn, d, n)
                     self_y_pred = [predict_example_boosting(Xtst[i, :], model) for i in range(Xtst.shape[0])]
-                    plot_confusion_matrix(ytst, self_y_pred, normalize=False,
-                              title='self_boosting_depth{0}_size{1}_cm'.format(d,n))
+                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='self_boosting_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
                     print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
                     
@@ -371,8 +379,7 @@ if __name__ == '__main__':
                     modelList = BaggingClassifier(base_estimator=dtree, n_estimators=n, bootstrap=True)
                     modelList.fit(Xtrn, ytrn)
                     self_y_pred = modelList.predict(Xtst)
-                    plot_confusion_matrix(ytst, self_y_pred, normalize=False,
-                                  title='sklearn_bagging_depth{0}_size{1}_cm'.format(d,n))
+                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='sklearn_bagging_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
                     print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
                     
@@ -385,8 +392,7 @@ if __name__ == '__main__':
                     model = AdaBoostClassifier(base_estimator=dtree, n_estimators=n)
                     model.fit(Xtrn, ytrn)
                     self_y_pred = model.predict(Xtst)
-                    plot_confusion_matrix(ytst, self_y_pred, normalize=False,
-                              title='sklearn_boosting_depth{0}_size{1}_cm'.format(d,n))
+                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='sklearn_boosting_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
                     print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
                 
