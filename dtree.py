@@ -1,14 +1,11 @@
 import numpy as np
+from random import randint
+import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix
-
 from sklearn.ensemble import BaggingClassifier
 from sklearn.ensemble import AdaBoostClassifier
-
 from sklearn.tree import DecisionTreeClassifier
-
-from random import randint
-
 
 def partition(x):
     """
@@ -19,63 +16,69 @@ def partition(x):
       ...
       vk: indices of x == vk }, where [v1, ... vk] are all the unique values in the vector z.
     """
-    temp = {
-    }
+    x_dict = {}
     arr, count = np.unique(x, return_counts=True)
     for i in arr:
-        temp[i] = []
+        x_dict[i] = []
         for j in range(len(x)):
             if i == x[j]:
-                temp[i].append(j)
-    return temp
+                x_dict[i].append(j)
+    return x_dict
 
 
 
-def entropy(y, weight):
+def entropy(y, w=None):
     """
     Compute the entropy of a vector y by considering the counts of the unique values (v1, ... vk), in z
     Returns the entropy of z: H(z) = p(z=v1) log2(p(z=v1)) + ... + p(z=vk) log2(p(z=vk))
     """
-    h = 0
-    temp = {
-        0: 0,
-        1: 0
-        }
+    if w is None:
+        w = np.ones((len(y), 1), dtype=int)
+    
+    hy = 0.0
+    p = {0: 0, 1: 0}
+    
     y_len = len(y)
     if y_len != 0:
         for i in range(y_len):
             if y[i] == 0:
-                temp[0] = temp[0] + weight[i]
+                p[0] = p[0] + w[i]
             elif y[i] == 1:
-                temp[1] = temp[1] + weight[i]
-        sum = temp[0] + temp[1]
-        for j in range(len(temp)):
-            temp[j] = temp[j]/sum
-            if temp[j] != 0:
-                h = temp[j] * np.log2(temp[j]) + h
-        return -h
+                p[1] = p[1] + w[i]
+        sum = p[0] + p[1]
+        for j in range(len(p)):
+            p[j] = p[j]/sum
+            if p[j] != 0:
+                hy = hy - (p[j] * np.log2(p[j]))
+        return hy
     else:
         return 0
 
-def mutual_information(x, y, weight):
+def mutual_information(x, y, w=None):
     """
     Compute the mutual information between a data column (x) and the labels (y). The data column is a single attribute
     over all the examples (n x 1). Mutual information is the difference between the entropy BEFORE the split set, and
     the weighted-average entropy of EACH possible split.
     Returns the mutual information: I(x, y) = H(y) - H(y | x)
     """
-    h_y = entropy(y, weight)
+    
+    if w is None:
+        w = np.ones((len(y), 1), dtype=int)
+    
+    hy = entropy(y, w)
     x_partition = partition(x)
-    temp = 0
+    
+    w_entropy = 0
     total_weight = 0
     for j in x_partition:
-        weight_i = np.sum(weight[x_partition[j]])
-        temp = ((weight_i) * entropy(y[x_partition[j]], weight[x_partition[j]])) + temp
+        weight_i = np.sum(w[x_partition[j]])
+        w_entropy = w_entropy + ((weight_i) * entropy(y[x_partition[j]], w[x_partition[j]]))
         total_weight = weight_i + total_weight
-    h_y_of_x = temp / total_weight
-    return (h_y - h_y_of_x)
+        
+    hyx = w_entropy / total_weight
+    return (hy - hyx)
 
-def id3(x, y, attributes, max_depth, weight, depth=0):
+def id3(x, y, attribute_value_pairs=None, max_depth=5, depth=0, w=None):
     """
     Implements the classical ID3 algorithm given training data (x), training labels (y) and an array of attributes
     to consider. This is a recursive algorithm that depends on three termination conditions
@@ -105,53 +108,57 @@ def id3(x, y, attributes, max_depth, weight, depth=0):
 
     tree = {}
     arr, count = np.unique(y, return_counts=True)
-    ''' return the max of label if attribute array is empty or depth of the current itireation
-        reaches the specified max depth of the tree or when input array is empty'''
-    if len(attributes) == 0 or depth == max_depth or len(x) == 0:
+    
+    if len(attribute_value_pairs) == 0 or depth == max_depth or len(x) == 0:
         return arr[np.argmax(count)]
+    
     elif len(arr) == 1:
-        ''' return 1 when all the values of label list are one'''
         return arr[0]
+    
     else:
-        ''' if none of the above cases matches then find the best attribute to split and call id3 recursively'''
-        informationGain = get_mutual_information(x, y, attributes, weight)
-        bestAttr, bestValue = choose_attribute(informationGain)
-        a = partition(x[:,bestAttr])
-        new_attributes = list(filter(lambda x: x!= (bestAttr, bestValue), attributes))
-        non_best_indicies = []
-        for i in a:
+        # calculate information gain of attribute-value pairs
+        infoGain = getInfoGain(x, y, attribute_value_pairs, w)
+        
+        # find best attribute-value pair based on information gain
+        bestAttr, bestValue = best_attribute_value_pair(infoGain)
+        
+        val_list = partition(x[:,bestAttr])
+        
+        # remove best attribute-value pair from the attribute-value pairs list
+        new_attributes = list(filter(lambda x: x!= (bestAttr, bestValue), attribute_value_pairs))
+        
+        remaining_indicies = []
+        for i in val_list:
             if i != bestValue:
-                non_best_indicies.extend(a[i])
-        depth+=1
-        for i in range(0,2):
+                remaining_indicies.extend(val_list[i])
+                      
+        for i in range(2):
             if i == 0:
-                index = a[bestValue]
+                index = val_list[bestValue]
                 new_x = x[index]
                 new_y = y[index]
-                tree[bestAttr, bestValue, 'true'] = id3(new_x, new_y, new_attributes, max_depth,weight, depth)
+                tree[bestAttr, bestValue, 'true'] = id3(new_x, new_y, new_attributes, max_depth, depth+1, w)
             else:
-                new_x = x[non_best_indicies]
-                new_y = y[non_best_indicies]
-                tree[bestAttr, bestValue, 'false'] = id3(new_x, new_y, new_attributes, max_depth,weight, depth)
+                new_x = x[remaining_indicies]
+                new_y = y[remaining_indicies]
+                tree[bestAttr, bestValue, 'false'] = id3(new_x, new_y, new_attributes, max_depth, depth+1, w)
+    
     return tree
 
-
-"""
-    choose_attribute is to choose the best attribute which has maximum gain
-"""
-def choose_attribute(infoGain):
+def best_attribute_value_pair(infoGain):
     maxGain = 0
-    bestAttrVlaue = 0
+    bestAttrValue = 0
     keys = list(infoGain.keys())
     for key in keys:
         gain = infoGain[key]
         if(gain >= maxGain):
             maxGain = gain
-            bestAttrVlaue = key
-    print('maxgain',maxGain)
-    return bestAttrVlaue
+            bestAttrValue = key
+    #print('maxgain',maxGain)
+    return bestAttrValue
 
-def get_mutual_information(x, y, attributes, weight):
+def getInfoGain(x, y, attributes, weight):
+    
     infoGain = {}
     row , col = np.shape(x)
 
@@ -159,18 +166,18 @@ def get_mutual_information(x, y, attributes, weight):
         x_partition = partition(x[:, attr])
         array = x_partition.keys();
         for attribute in attributes:
-            temp = []
+            x_vec = []
             key , value = attribute
             if(attr == key) and (value in array):
                 indexes = x_partition[value]
                 for i in range(0, row):
                     if i in indexes:
-                        temp.append(1)
+                        x_vec.append(1)
                     else:
-                        temp.append(0)
-                infoGain[(attr, value)] = mutual_information(temp, y, weight)
-                if(infoGain[(attr, value)] < 0):
-                    print('negative info', infoGain[(attr, value)])
+                        x_vec.append(0)
+                infoGain[(attr, value)] = mutual_information(x_vec, y, weight)
+#                if(infoGain[(attr, value)] < 0):
+#                    print('negative infoGain', infoGain[(attr, value)])
     return infoGain
 
 
@@ -192,21 +199,36 @@ def predict_label(x, tree):
                     else:
                         return tree[newKey]
 
-
 def predict_example(x, h_ens):
     """
-    Predicts the classification label for a single example x using tree by recursively descending the tree until
+    For predicting exampole with bagging we recursively descending the tree until
     a label/leaf node is reached.
-    Returns the predicted label of x according to tree
-    """
-    y_preict = []
+    Returns the label with majority count
 
-    for numHypo in h_ens:
-        alpha, tree = h_ens[numHypo]
+    For prediciting exampls with boosting alogirthm where we multiply the precicion with respect to the alpha and normalize it with
+    total alpha vlaues
+    Returns the predicted label
+    """  
+    y_predict = []
+    total_alpha = 0
+
+    for i in h_ens:
+        alpha, tree = h_ens[i]
         y = predict_label(x, tree)
-        y_preict.append(y)
-    arr, count = np.unique(y_preict, return_counts=True)
-    return arr[np.argmax(count)]
+        y_predict.append(y*alpha)
+        total_alpha += alpha
+    
+    if total_alpha == len(h_ens): 
+        # i.e. alpha = 1 for each tree => Bagging
+        arr, count = np.unique(y_predict, return_counts=True)
+        return arr[np.argmax(count)]
+    
+    # else Boosting  
+    predictValue = np.sum(y_predict) / total_alpha
+    if(predictValue >= 0.5):
+        return 1
+    else:
+        return 0
 
 def compute_error(y_true, y_pred):
     """
@@ -221,7 +243,7 @@ def compute_error(y_true, y_pred):
             count+=1
     return count / label_len
 
-def randomFunction(x):
+def bootstrap(x):
     indexList= []
     length = len(x[:, 1])
     for i in range(0, length):
@@ -229,7 +251,7 @@ def randomFunction(x):
         indexList.append(index)
     return indexList
 
-def bagging(x, y, maxdepth, numtrees):
+def bagging(x, y, maxdepth, num_trees):
     h_i = {}
     attributes =[]
     rows, cols = np.shape(x)
@@ -240,34 +262,14 @@ def bagging(x, y, maxdepth, numtrees):
 
     weight = np.ones((rows, 1), dtype=int)
     alpha_i = 1
-    for i in range(0, numtrees):
-        radIndexes = randomFunction(x)
-        tree = id3(x[radIndexes], y[radIndexes], attributes, maxdepth, weight)
+    for i in range(0, num_trees):
+        radIndexes = bootstrap(x)
+        tree = id3(x[radIndexes], y[radIndexes], attributes, maxdepth, 0, weight)
         h_i[i] = (alpha_i, tree)
     return h_i
 
-def predict_boosting_example(x, h_ens):
-    """
-    For prediciting exampls with boosting alogirthm where we multiply the precition with respecte to the alpha and normalize it with
-    total alpha vlaues
-    Returns the predicted label of x according to tree
-    """
-    y_preict = []
-    total_alpha = 0
 
-    for numHypo in h_ens:
-        alpha, tree = h_ens[numHypo]
-        y = predict_label(x, tree)
-        y_preict.append(y*alpha)
-        total_alpha += alpha
-    predictValue = np.sum(y_preict) / total_alpha
-
-    if(predictValue >= 0.5):
-        return 1
-    else:
-        return 0
-
-def boosting(x, y, max_depth,num_stumps):
+def boosting(x, y, max_depth, num_stumps):
     rows, cols = np.shape(x)
     weight = []
     h_ens = {}
@@ -293,7 +295,7 @@ def boosting(x, y, max_depth,num_stumps):
                     weight.append(pre_weight[i] * np.exp(alpha_i))
             d_total = np.sum(weight)
             weight = weight / d_total
-        tree = id3(x, y, attributes, max_depth, weight)
+        tree = id3(x, y, attributes, max_depth, 0, weight)
 
         trn_pred = [predict_label(x[i, :], tree) for i in range(rows)]
         temp = 0
@@ -304,6 +306,57 @@ def boosting(x, y, max_depth,num_stumps):
         alpha_i = 0.5 * np.log((1-err)/err)
         h_ens[stump] = (alpha_i, tree)
     return h_ens
+
+def plot_confusion_matrix(y_true, y_pred,
+                          normalize=False,
+                          title=None,
+                          cmap=plt.cm.Blues):
+    """
+    Function to print and plot the confusion matrix 
+    Customized and edited the sklearn's plot_confusion_matrix function
+    """
+    
+    if not title:
+        if normalize:
+            title = 'Normalized confusion matrix'
+        else:
+            title = 'Confusion matrix, without normalization'
+
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+     
+    # Only use the labels that appear in the data
+    #classes = unique_labels(y_true, y_pred)
+
+    print(cm)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
+    # We want to show all ticks...
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           # ... and label them with the respective list entries
+           #xticklabels=classes, yticklabels=classes,
+           title=title,
+           ylabel='True label',
+           xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    #fig.tight_layout()
+    fig.savefig('./'+title+'.jpg')
+    return ax
 
 if __name__ == '__main__':
 
@@ -320,11 +373,11 @@ if __name__ == '__main__':
     _boosting = True
     
     _self = True
-    _scikit = False
+    _scikit = True
     
-    tree_depth = np.array([3])
-    stump_depth = np.array([2])
-    ens_size = np.array([5])
+    tree_depth = np.array([3,5])
+    stump_depth = np.array([1,2])
+    ens_size = np.array([5,10])
 
     if (_self):
         print('Self-implementation')
@@ -332,23 +385,23 @@ if __name__ == '__main__':
             print('Bagging')
             for n in ens_size:
                 for d in tree_depth:
-                    print('Size {1} Depth {0}'.format(d,n))
+                    print('Bag Size {0} | Tree Depth {1}'.format(n, d))
                     modelList = bagging(Xtrn, ytrn, d, n)
-                    self_y_pred = [predict_example_bagging(Xtst[i, :], modelList) for i in range(Xtst.shape[0])]
-                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='self_bagging_depth{0}_size{1}_cm'.format(d,n))
+                    self_y_pred = [predict_example(Xtst[i, :], modelList) for i in range(Xtst.shape[0])]
+                    plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='self_bagging_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
-                    print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
+                    print("(tn, fp, fn, tp) = ",(tn, fp, fn, tp))
                     
         if(_boosting):
             print('Boosting')
             for n in ens_size:
                 for d in stump_depth:
-                    print('Size {1} Depth {0}'.format(d,n)) 
+                    print('Ensemble Size {0} | Stump Depth {1}'.format(n, d)) 
                     model = boosting(Xtrn, ytrn, d, n)
-                    self_y_pred = [predict_example_boosting(Xtst[i, :], model) for i in range(Xtst.shape[0])]
-                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='self_boosting_depth{0}_size{1}_cm'.format(d,n))
+                    self_y_pred = [predict_example(Xtst[i, :], model) for i in range(Xtst.shape[0])]
+                    plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='self_boosting_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
-                    print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
+                    print("(tn, fp, fn, tp) = ",(tn, fp, fn, tp))
                     
                 
     if (_scikit):
@@ -357,12 +410,12 @@ if __name__ == '__main__':
             print('Bagging')
             for n in ens_size:
                 for d in tree_depth:     
-                    print('Size {1} Depth {0}'.format(d,n))
+                    print('Bag Size {0} | Tree Depth {1}'.format(n, d))
                     dtree = DecisionTreeClassifier(criterion='entropy', max_depth=d)
                     modelList = BaggingClassifier(base_estimator=dtree, n_estimators=n, bootstrap=True)
                     modelList.fit(Xtrn, ytrn)
                     self_y_pred = modelList.predict(Xtst)
-                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='sklearn_bagging_depth{0}_size{1}_cm'.format(d,n))
+                    plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='sklearn_bagging_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
                     print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
                     
@@ -370,12 +423,12 @@ if __name__ == '__main__':
             print('Boosting')
             for n in ens_size:
                 for d in stump_depth:
-                    print('Size {1} Depth {0}'.format(d,n))
+                    print('Ensemble Size {0} | Stump Depth {1}'.format(n, d))
                     dtree = DecisionTreeClassifier(criterion='entropy', max_depth=d)
                     model = AdaBoostClassifier(base_estimator=dtree, n_estimators=n)
                     model.fit(Xtrn, ytrn)
                     self_y_pred = model.predict(Xtst)
-                    # plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='sklearn_boosting_depth{0}_size{1}_cm'.format(d,n))
+                    plot_confusion_matrix(ytst, self_y_pred, normalize=False, title='sklearn_boosting_depth{0}_size{1}_cm'.format(d,n))
                     tn, fp, fn, tp = confusion_matrix(ytst, self_y_pred).ravel()
                     print("(tn, fp, fn, tp) = ", (tn, fp, fn, tp))
                 
